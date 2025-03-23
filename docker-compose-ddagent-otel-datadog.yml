@@ -1,0 +1,48 @@
+services:
+  otelhttpservice:
+    image: otel-testing:local
+    build:
+      context: .
+    environment:
+      APP_POSTGRES_HOST: postgres
+      APP_POSTGRES_PASSWORD: oteltesting
+      APP_OTEL_ENABLE: true
+      APP_OTEL_COLLECTORENDPOINT: datadog:4317
+      APP_OTEL_INSECUREMODE: true
+      APP_OTEL_SERVICENAME: otel-http-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - datadog 
+  postgres:
+    image: postgres:14.12-alpine3.19
+    environment:
+      POSTGRES_PASSWORD: oteltesting
+    configs:
+      - source: postgres-schema
+        target: /docker-entrypoint-initdb.d/schema.sql
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  datadog:
+    image: datadog/agent:latest 
+    environment:
+     - DD_API_KEY=${DD_API_KEY}
+     - DD_SITE=${DD_SITE}
+     - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+     - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT=0.0.0.0:4317
+     - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318 
+    ports:
+     - "4317:4317"
+     - "4318:4318"
+    volumes:
+     - /var/run/docker.sock:/var/run/docker.sock
+     - /proc/:/host/proc/:ro
+     - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+
+configs:
+  postgres-schema:
+    file: sql/schema.sql
+
+volumes:
+  postgres-data:

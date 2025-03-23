@@ -1,0 +1,130 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+      grpc:
+  # The hostmetrics receiver is required to get correct infrastructure metrics in Datadog.
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      paging:
+        metrics:
+          system.paging.utilization:
+            enabled: true
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      disk:
+      filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+      load:
+      memory:
+      network:
+      processes:
+  filelog:
+   include:
+     - /var/lib/docker/containers/*/*-json.log
+   encoding: utf-8
+   fingerprint_size: 1kb
+   force_flush_period: "0"
+   include_file_name: false
+   include_file_path: true
+   max_concurrent_files: 1024
+   max_log_size: 1MiB
+   operators:
+     - id: parser-docker
+       timestamp:
+         layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+         parse_from: attributes.time
+       type: json_parser
+     - id: extract_metadata_from_docker_tag
+       parse_from: attributes.attrs.tag
+       regex: ^(?P<name>[^\|]+)\|(?P<image_name>[^\|]+)\|(?P<id>[^$]+)$
+       type: regex_parser
+       if: 'attributes?.attrs?.tag != nil'
+     - from: attributes.name
+       to: resource["com.splunk.sourcetype"]
+       type: copy
+       if: 'attributes?.name != nil'
+     - from: attributes.name
+       to: resource["docker.container.name"]
+       type: move
+       if: 'attributes?.name != nil'
+     - from: attributes.image_name
+       to: resource["docker.image.name"]
+       type: move
+       if: 'attributes?.image_name != nil'
+     - from: attributes.id
+       to: resource["docker.container.id"]
+       type: move
+       if: 'attributes?.id != nil'
+     - from: attributes.stream
+       to: resource["log.io.stream"]
+       type: move
+     - field: attributes.attrs.tag
+       type: remove
+       if: 'attributes?.attrs?.tag != nil'
+     - from: attributes.log
+       to: body
+       type: move
+   poll_interval: 200ms
+   start_at: beginning
+
+processors:
+  batch:
+    send_batch_max_size: 100
+    send_batch_size: 10
+    timeout: 10s
+  resourcedetection:
+    # bare metal
+    detectors: [env, system]
+    system:
+      resource_attributes:
+        os.description:
+          enabled: true
+        host.arch:
+          enabled: true
+        host.cpu.vendor.id:
+          enabled: true
+        host.cpu.family:
+          enabled: true
+        host.cpu.model.id:
+          enabled: true
+        host.cpu.model.name:
+          enabled: true
+        host.cpu.stepping:
+          enabled: true
+        host.cpu.cache.l2.size:
+          enabled: true
+
+connectors:
+  datadog/connector:
+
+exporters:
+  datadog:
+    api:
+      site: ${env:DD_SITE}
+      key: ${env:DD_API_KEY}
+  debug:
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, otlp, datadog/connector]
+      processors: [batch]
+      exporters: [debug,datadog]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug,datadog/connector]
+    traces/sampling:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug,datadog]
+    logs:
+      receivers: [filelog]
+      processors: [batch]
+      exporters: [debug,datadog]

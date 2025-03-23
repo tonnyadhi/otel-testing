@@ -1,0 +1,9 @@
+postgres:
+  host: localhost
+  user: postgres
+  password: testingotel123
+otel:
+  collectorendpoint: localhost:4567
+  insecuremode: true
+  servicename: otel-http-testing
+  enable: true
